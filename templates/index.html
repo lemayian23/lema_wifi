@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lema WiFi</title>
+    <style>
+        body { font-family: Arial; background: #eef2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: white; padding: 20px; border-radius: 10px; width: 300px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .plan { border: 1px solid #ccc; padding: 10px; margin: 5px 0; cursor: pointer; border-radius: 5px; }
+        .plan.active { border-color: #3182ce; background: #ebf8ff; }
+        input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+        button { width: 100%; padding: 10px; background: #38a169; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Lema WiFi</h2>
+        <div class="plans">
+            <div class="plan active" onclick="selectPlan(this, 10)">KSh 10 - 1 Hour</div>
+            <div class="plan" onclick="selectPlan(this, 15)">KSh 15 - 2 Hours</div>
+            <div class="plan" onclick="selectPlan(this, 25)">KSh 25 - 4 Hours</div>
+        </div>
+        <input type="tel" id="phone" placeholder="Enter M-Pesa Number" required>
+        <input type="hidden" id="mac" value="">
+        <button onclick="payNow()">Pay Now</button>
+        <p id="status"></p>
+    </div>
+
+    <script>
+        // Grab the MAC address from the URL (e.g., ?mac=AA:BB:CC:DD:EE:FF)
+        const urlParams = new URLSearchParams(window.location.search);
+        let macFromUrl = urlParams.get('mac');
+        
+        // --- FOR TESTING ONLY ---
+        if (!macFromUrl) {
+            macFromUrl = "00:11:22:33:44:55"; 
+            console.log("Testing Mode: Using fake MAC address", macFromUrl);
+        }
+        
+        document.getElementById('mac').value = macFromUrl;
+
+        let selectedAmount = 10;
+
+        function selectPlan(element, amount) {
+            document.querySelectorAll('.plan').forEach(p => p.classList.remove('active'));
+            element.classList.add('active');
+            selectedAmount = amount;
+        }
+
+        function payNow() {
+            const phone = document.getElementById('phone').value;
+            const mac = document.getElementById('mac').value;
+            const status = document.getElementById('status');
+
+            status.innerText = "Processing...";
+            status.style.color = "blue";
+
+            fetch('/pay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone, amount: selectedAmount, mac: mac })
+            })
+            .then(async res => {
+                // THIS IS THE FIX: Read the response as text first, then try to parse as JSON
+                const text = await res.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    // If Python sent an error page (HTML) instead of JSON
+                    return { ResponseCode: "1", errorMessage: "Server error. Check Python terminal." };
+                }
+            })
+            .then(data => {
+                if (data.ResponseCode === "0") {
+                    status.innerText = "Check your phone for PIN prompt!";
+                    status.style.color = "green";
+                } else {
+                    status.innerText = "Failed: " + (data.errorMessage || "Try again.");
+                    status.style.color = "red";
+                }
+            })
+            .catch(err => {
+                status.innerText = "Network error. Is Python running?";
+                status.style.color = "red";
+            });
+        }
+    </script>
+</body>
+</html>
