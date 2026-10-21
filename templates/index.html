@@ -7,10 +7,30 @@
     <style>
         body { font-family: Arial; background: #eef2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .container { background: white; padding: 20px; border-radius: 10px; width: 300px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .plan { border: 1px solid #ccc; padding: 10px; margin: 5px 0; cursor: pointer; border-radius: 5px; }
-        .plan.active { border-color: #3182ce; background: #ebf8ff; }
+        .plan { border: 1px solid #ccc; padding: 10px; margin: 5px 0; cursor: pointer; border-radius: 5px; transition: 0.2s; }
+        .plan.active { border-color: #3182ce; background: #ebf8ff; box-shadow: 0 0 5px rgba(49, 130, 206, 0.5); }
         input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
-        button { width: 100%; padding: 10px; background: #38a169; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        
+        /* BUTTON AND SPINNER STYLES */
+        button { 
+            width: 100%; padding: 12px; background: #38a169; color: white; 
+            border: none; border-radius: 5px; cursor: pointer; font-weight: bold; 
+            display: flex; justify-content: center; align-items: center; gap: 10px;
+        }
+        button:disabled { background: #a0aec0; cursor: not-allowed; }
+        
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid #ffffff;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: none; /* Hidden by default */
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #status { margin-top: 15px; font-weight: bold; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -21,18 +41,24 @@
             <div class="plan" onclick="selectPlan(this, 15)">KSh 15 - 2 Hours</div>
             <div class="plan" onclick="selectPlan(this, 25)">KSh 25 - 4 Hours</div>
         </div>
+        
         <input type="tel" id="phone" placeholder="Enter M-Pesa Number" required>
         <input type="hidden" id="mac" value="">
-        <button onclick="payNow()">Pay Now</button>
+        
+        <button id="payBtn" onclick="payNow()">
+            <span id="btnText">Pay Now</span>
+            <span id="spinner" class="spinner"></span>
+        </button>
+        
         <p id="status"></p>
     </div>
 
     <script>
-        // Grab the MAC address from the URL (e.g., ?mac=AA:BB:CC:DD:EE:FF)
+        // Grab the MAC address from the URL
         const urlParams = new URLSearchParams(window.location.search);
         let macFromUrl = urlParams.get('mac');
         
-        // --- FOR TESTING ONLY ---
+        // FOR TESTING ONLY (Fake MAC if none provided)
         if (!macFromUrl) {
             macFromUrl = "00:11:22:33:44:55"; 
             console.log("Testing Mode: Using fake MAC address", macFromUrl);
@@ -49,12 +75,25 @@
         }
 
         function payNow() {
-            const phone = document.getElementById('phone').value;
+            const phone = document.getElementById('phone').value.trim();
             const mac = document.getElementById('mac').value;
             const status = document.getElementById('status');
+            const btn = document.getElementById('payBtn');
+            const btnText = document.getElementById('btnText');
+            const spinner = document.getElementById('spinner');
 
-            status.innerText = "Processing...";
-            status.style.color = "blue";
+            // Basic Validation
+            if (phone.length < 10) {
+                status.innerText = "Please enter a valid phone number.";
+                status.style.color = "red";
+                return;
+            }
+
+            // --- 1. START LOADING STATE ---
+            btn.disabled = true; // Prevent double click
+            btnText.innerText = "Processing...";
+            spinner.style.display = "inline-block"; // Show spinner
+            status.innerText = ""; // Clear old messages
 
             fetch('/pay', {
                 method: 'POST',
@@ -62,18 +101,16 @@
                 body: JSON.stringify({ phone: phone, amount: selectedAmount, mac: mac })
             })
             .then(async res => {
-                // THIS IS THE FIX: Read the response as text first, then try to parse as JSON
                 const text = await res.text();
                 try {
                     return JSON.parse(text);
                 } catch (e) {
-                    // If Python sent an error page (HTML) instead of JSON
-                    return { ResponseCode: "1", errorMessage: "Server error. Check Python terminal." };
+                    return { ResponseCode: "1", errorMessage: "Server error. Check terminal." };
                 }
             })
             .then(data => {
                 if (data.ResponseCode === "0") {
-                    status.innerText = "Check your phone for PIN prompt!";
+                    status.innerText = "STK Push sent! Check your phone for the PIN prompt.";
                     status.style.color = "green";
                 } else {
                     status.innerText = "Failed: " + (data.errorMessage || "Try again.");
@@ -83,6 +120,12 @@
             .catch(err => {
                 status.innerText = "Network error. Is Python running?";
                 status.style.color = "red";
+            })
+            .finally(() => {
+                // --- 2. END LOADING STATE ---
+                btn.disabled = false; // Re-enable button
+                btnText.innerText = "Pay Now"; // Reset text
+                spinner.style.display = "none"; // Hide spinner
             });
         }
     </script>
